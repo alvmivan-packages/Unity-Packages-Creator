@@ -89,7 +89,6 @@ namespace Editor
     }
 
 
-
     public class PackagesCreator
     {
         const string PackageCreationMessage = "Creating package {0} at {1}";
@@ -144,36 +143,41 @@ namespace Editor
                 }}
             }}
         }}";
-        
-        
+
+
         public const string FolderToCreatePackages = "MyPackages";
 
         public static bool ExistsFolderToCreatePackages()
         {
             return Directory.Exists(GetBasePath());
         }
-        
-        public static  void CreateFolderToCreatePackages()
+
+        public static void CreateFolderToCreatePackages()
         {
             Directory.CreateDirectory(GetBasePath());
             //refresh the assets folder
             AssetDatabase.Refresh();
         }
-        
+
         public static void OpenFolderToCreatePackages()
         {
             string path = GetBasePath().Replace("\\", "/");
-    
+
+            OpenFolder(path);
+        }
+
+        static void OpenFolder(string path)
+        {
             // Validar el path para asegurarse de que se abra correctamente en el explorador de archivos
             if (Application.platform == RuntimePlatform.WindowsEditor)
             {
                 path = "\"" + path + "\""; // Agregar comillas para manejar espacios en el path en Windows
             }
-    
+
             Process.Start(path);
         }
 
-        
+
         static string GetBasePath()
         {
             //"(abs)/Assets/Packages/"
@@ -193,28 +197,34 @@ namespace Editor
             var company = config.organization.Replace(" ", "_").ToLower();
             var basePath = GetBasePath();
             var fullPath = Path.Combine(basePath, packageName);
+            var configCreateDefaultScript = config.createDefaultScript;
+            var configCreateTests = config.createTests;
+            var configCreateEditor = config.createEditor;
+            var configCreateGitRepo = config.createGitRepo;
+            var configPackageDescription = config.packageDescription;
+
 
             Debug.Log(string.Format(PackageCreationMessage, packageName, fullPath));
 
             await CreateRuntimeAsmdef(packageName);
-            if (config.createEditor)
+            if (configCreateEditor)
             {
                 CreateEditorAsmdef(packageName);
             }
 
-            if (config.createTests)
+            if (configCreateTests)
             {
                 CreateTestsDirectory(packageName);
             }
 
-            await CreatePackageJson(packageName, config.packageDescription, company);
+            await CreatePackageJson(packageName, configPackageDescription, company);
 
-            if (config.createGitRepo)
+            if (configCreateGitRepo)
             {
                 InitGitRepo(packageName);
             }
 
-            if (config.createDefaultScript)
+            if (configCreateDefaultScript)
             {
                 await CreateDefaultScript(packageName);
             }
@@ -224,22 +234,23 @@ namespace Editor
             if (EditorUtility.DisplayDialog("Package Created", "Would you like to open the package in file explorer?",
                     "Yes", "No"))
             {
-                Process.Start("explorer.exe", fullPath);
+                OpenFolder(fullPath);
             }
         }
 
         static async Task CreateRuntimeAsmdef(string packageName)
         {
-            Directory.CreateDirectory(Path.Combine(packageName, "Runtime"));
-            await File.WriteAllTextAsync(Path.Combine(packageName, "Runtime", $"{packageName}.Runtime.asmdef"),
+            var packagePath = Path.Combine(GetBasePath(), packageName);
+            Directory.CreateDirectory(Path.Combine(packagePath, "Runtime"));
+            await File.WriteAllTextAsync(Path.Combine(packagePath, "Runtime", $"{packageName}.Runtime.asmdef"),
                 string.Format(RuntimeAsmdefTemplate, packageName));
         }
 
         static async void CreateEditorAsmdef(string packageName)
         {
-            var editorPath = Path.Combine(packageName, "Editor");
-            Directory.CreateDirectory(Path.Combine(packageName, "Editor"));
-            await File.WriteAllTextAsync(Path.Combine(editorPath, $"{packageName}.Editor.asmdef"),
+            var packagePath = Path.Combine(GetBasePath(), packageName);
+            Directory.CreateDirectory(Path.Combine(packagePath, "Editor"));
+            await File.WriteAllTextAsync(Path.Combine(packagePath, "Editor", $"{packageName}.Editor.asmdef"),
                 string.Format(EditorAsmdefTemplate, packageName));
         }
 
@@ -257,21 +268,46 @@ namespace Editor
 
         static void InitGitRepo(string packageName)
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = $"init {packageName}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-            });
+            var workingDirectory = Path.Combine(GetBasePath(), packageName);
+
+            // Ejecutar git init de forma sincrónica
+            Process gitInitProcess = new Process();
+            gitInitProcess.StartInfo.FileName = "git";
+            gitInitProcess.StartInfo.Arguments = "init";
+            gitInitProcess.StartInfo.UseShellExecute = false;
+            gitInitProcess.StartInfo.RedirectStandardOutput = true;
+            gitInitProcess.StartInfo.WorkingDirectory = workingDirectory;
+            gitInitProcess.Start();
+            gitInitProcess.WaitForExit();
+
+            // Abrir la carpeta en GitHub Desktop
+            string githubDesktopUrl = $"x-github-client://openRepo/{workingDirectory}";
+            Process.Start(githubDesktopUrl);
         }
+
+
 
         static async Task CreateDefaultScript(string packageName)
         {
             var packagePath = Path.Combine(GetBasePath(), packageName);
+            var defaultScriptPath = Path.Combine(packagePath, "Runtime", $"{packageName}_DefaultScript.cs");
+            await File.WriteAllTextAsync(defaultScriptPath, string.Format(DefaultScriptTemplate, packageName));
+        }
 
-            await File.WriteAllTextAsync(Path.Combine(packagePath, "Runtime", $"{packageName}_DefaultScript.cs"),
-                string.Format(DefaultScriptTemplate, packageName));
+        public static void DeletePackage(string packageName)
+        {
+            // create a path for this package name and delete folder (with all its files)
+            var packagePath = Path.Combine(GetBasePath(), packageName.Replace(" ", "_"));
+            Directory.Delete(packagePath, true);
+            //if .meta delete too
+            var packageMetaPath = packagePath + ".meta";
+            if (File.Exists(packageMetaPath))
+            {
+                File.Delete(packageMetaPath);
+            }
+
+            //refresh the assets folder
+            AssetDatabase.Refresh();
         }
     }
 }

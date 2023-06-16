@@ -34,7 +34,7 @@ namespace Editor
 
                 return;
             }
-            
+
             if (GUILayout.Button("Open Packages Folder"))
             {
                 PackagesCreator.OpenFolderToCreatePackages();
@@ -54,6 +54,12 @@ namespace Editor
                 EditorGUILayout.HelpBox(
                     $"A package with the name {packageName} already exists. Please choose a different name.",
                     MessageType.Warning);
+
+                if (GUILayout.Button("Delete Package"))
+                {
+                    PackagesCreator.DeletePackage(packageName);
+                }
+
                 return;
             }
 
